@@ -3,46 +3,17 @@ import logging
 from collections.abc import Callable
 import functools
 from logging import Logger
+from time import sleep
 from typing import Any
+import re
 
+from enums import ServerEvents
+from schemas import Settings, EventOutcome, DataContent
 import socketio
 import requests
-from enum import StrEnum
-
-from pydantic import Field, AnyHttpUrl, BaseModel, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_LOGGER = logging.getLogger('roschat.bot')
-
-
-class Settings(BaseSettings):
-    token: str = Field(min_length=64)
-    base_url: AnyHttpUrl = Field(...)
-    bot_name: str = Field(min_length=1)
-    query: None | str = Field(default='type-bot')
-    reject_unauthorized: bool = Field(default=False, serialization_alias="rejectUnauthorized")
-
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
-
-    @property
-    def socket_options(self) -> dict:
-        return {'query': self.query, 'rejectUnauthorized': str(self.reject_unauthorized).lower()}
-
-    @property
-    def credentials(self) -> dict:
-        return {'token': self.token, 'name': self.bot_name}
-
-
-class ServerEvents(StrEnum):
-    CONNECT = 'connect'
-    START_BOT = 'start-bot'
-    SEND_BOT_MESSAGE = 'send-bot-message'
-    BOT_MESSAGE_EVENT = 'bot-message-event'
-    BOT_MESSAGE_RECEIVED = 'bot-message-received'
-    BOT_MESSAGE_WATCHED = 'bot-message-watched'
-    DELETE_BOT_MESSAGE = 'delete-bot-message'
-    SET_BOT_KEYBOARD = 'set-bot-keyboard'
-    BOT_BUTTON_EVENT = 'bot-button-event'
+COMMAND_REGEX = re.compile(r"^/\w+$")
 
 
 class SocketHandler(socketio.ClientNamespace):
@@ -57,6 +28,7 @@ class SocketHandler(socketio.ClientNamespace):
                                     engineio_logger=logger if debug_mode else debug_mode)
 
         self._sio.register_namespace(self)
+        # TODO Think about default callback function place which i can use if it was registered
 
     def on_connect(self) -> None:
         ...
@@ -70,53 +42,22 @@ class SocketHandler(socketio.ClientNamespace):
 
     def registrate_connection(self, callback: Callable = None) -> None:
         self.logger.info("Connection registration")
-        self._sio.on(ServerEvents.CONNECT, handler=self.default_callback if callback is None else callback)
+        self._sio.on(ServerEvents.CONNECT, handler=callback)
 
-    def connect_to_server(self, socket_url: str, socket_options: dict) -> None:
+    def connect_to_server(self, socket_url: str, socket_options: dict, callback: Callable = None) -> None:
         self.logger.info("Connecting to the server")
         self._sio.connect(socket_url, headers=socket_options)
-        self.authorization(self._credentials)
+        self.authorization(self._credentials, callback)
 
-    def authorization(self, credentials: dict) -> None:
+    def authorization(self, credentials: dict, callback: Callable = None) -> None:
         self.logger.info("Authorization of the bot")
-        event = ServerEvents.START_BOT.value
-        self._sio.emit(event, data=credentials, callback=self._callbacks.get(event))
+        self.dispatch_event(ServerEvents.START_BOT, data=credentials, callback=callback)
 
-    def send_message(self, cid: int, data: str | dict):
-        params = {
-            'cid': cid,
-            'data': data if isinstance(data, str) else json.dumps(data)
-        }
-        event = ServerEvents.SEND_BOT_MESSAGE.value
-        self._sio.emit(ServerEvents.SEND_BOT_MESSAGE, data=params, callback=self._callbacks.get(event))
-
-    def mark_message_received(self, msg_id: int) -> None:
-        event = ServerEvents.BOT_MESSAGE_RECEIVED.value
-        self._sio.emit(event, data={'id': msg_id}, callback=self._callbacks.get(event))
-
-    def mark_message_watched(self, msg_id: int) -> None:
-        event = ServerEvents.BOT_MESSAGE_WATCHED.value
-        self._sio.emit(event, data={'id': msg_id}, callback=self._callbacks.get(event))
-
-    def message_delete(self, msg_id: int) -> None:
-        event = ServerEvents.DELETE_BOT_MESSAGE.value
-        self._sio.emit(event, data={'id': msg_id}, callback=self._callbacks.get(event))
-
-    def set_keyboard(self, data: dict) -> None:
-        # TODO income msg_id: int, data={'id': msg_id} ??? Или что ееще здесь в дата ?
-        if not data.get('cid'):
-            raise ValueError("Required the cid field is not provided")
-        event = ServerEvents.SET_BOT_KEYBOARD.value
-        self._sio.emit(event, data=data, callback=self._callbacks.get(event))
-
-    def register_callback(self, data: dict, event: ServerEvents, callback: Callable) -> None:
-        if not data.get('cid'):
-            raise ValueError("Required the cid field is not provided")
+    def dispatch_event(self, event: ServerEvents, data: dict, callback: Callable) -> None:
         self._sio.emit(event, data=data, callback=callback)
 
     def register_handler(self, event: ServerEvents, handler: Callable) -> None:
-        wrapped_handler = functools.partial(handler, event=event, socket_handler=self)
-        self._sio.on(event, handler=wrapped_handler)
+        self._sio.on(event, handler=handler)
 
     def wait(self) -> None:
         self._sio.wait()
@@ -130,16 +71,19 @@ class RosChatBot:
     def __init__(self, logger: Logger | None = None, debug_mode: bool = False) -> None:
         self._settings = Settings()
         self.logger = logger if logger else DEFAULT_LOGGER
-        self.socket_handler = SocketHandler(credentials=self._settings.credentials, logger=self.logger,
-                                            debug_mode=debug_mode)
+        self._socket_handler = SocketHandler(credentials=self._settings.credentials, logger=self.logger,
+                                             debug_mode=debug_mode)
+        self._command_registry = dict()
+        self._button_registry = dict()
 
     def connect(self, callback: Callable = None) -> None:
 
         try:
+            current_callback = callback if callback else self._socket_handler.default_callback
             socket_url = self.get_socket_url()
-            self.socket_handler.registrate_connection(callback)
-            self.socket_handler.connect_to_server(socket_url, self._settings.socket_options)
-
+            self._socket_handler.registrate_connection(current_callback)
+            self._socket_handler.connect_to_server(socket_url, self._settings.socket_options, current_callback)
+            self._register_default_handlers()
         except Exception as e:
             self.logger.exception(e)
             raise
@@ -161,58 +105,138 @@ class RosChatBot:
             raise ValueError("Couldn't get the value of the web socket from the web server configuration")
         return f"{self._settings.base_url}:{web_sockets_port}"
 
-    def add_callback(self, event: ServerEvents, callback: Callable) -> None:
-        self.socket_handler.register_callback()
-        self.logger.info(f"Callback for {event} was changed")
+    def _register_default_handlers(self) -> None:
+        # Register handlers because the bot implements the functionality of processing commands\ buttons.
+        self._add_handler(ServerEvents.BOT_MESSAGE_EVENT, self._socket_handler.default_callback)
+        self._add_handler(ServerEvents.BOT_BUTTON_EVENT, self._socket_handler.default_callback)
 
-    def add_handler(self, event: ServerEvents, handler: Callable) -> None:
-        self.socket_handler.register_handler(event, self.server_outcome_unpacking_decorator(handler))
-        self.logger.info(f"Handler for {event} was added")
+    def send_message(self, cid: int, data: str | dict, callback: Callable = None) -> None:
+        # TODO think about validate incoming date by pydantic and create certain Model for each event (with custom dump function for dispatch->)
+        params = {
+            'cid': cid,
+            'data': data if isinstance(data, str) else json.dumps(data)
+        }
+
+        self._socket_handler.dispatch_event(ServerEvents.SEND_BOT_MESSAGE, data=params, callback=callback)
+
+    def mark_message_received(self, msg_id: int, callback: Callable = None) -> None:
+        self._socket_handler.dispatch_event(ServerEvents.BOT_MESSAGE_RECEIVED, data={'id': msg_id}, callback=callback)
+
+    def mark_message_watched(self, msg_id: int, callback: Callable = None) -> None:
+        self._socket_handler.dispatch_event(ServerEvents.BOT_MESSAGE_WATCHED, data={'id': msg_id}, callback=callback)
+
+    def message_delete(self, msg_id: int, callback: Callable = None) -> None:
+        self._socket_handler.dispatch_event(ServerEvents.DELETE_BOT_MESSAGE, data={'id': msg_id}, callback=callback)
+
+    def _set_keyboard(self, params: dict, callback: Callable = None) -> None:
+        if not params.get('cid'):
+            raise ValueError("Required the cid field is not provided")
+        if not params.get('action'):
+            raise ValueError("Required the action field is not provided")
+        if not params.get('keyboard'):
+            raise ValueError("Required the keyboard field is not provided")
+
+        self._socket_handler.dispatch_event(ServerEvents.SET_BOT_KEYBOARD, data=params, callback=callback)
+
+    def turn_on_keyboard(self, cid: int, callback: Callable = None) -> None:
+        param = {
+            'cid': cid,
+            'keyboard': self._keyboard_layer,
+            'action': 'show'
+        }
+        self._set_keyboard(param, callback)
+
+    def turn_off_keyboard(self, cid: int, callback: Callable = None) -> None:
+        self.logger.warning("The command to hide the keyboard is not yet known.")
+        param = {
+            'cid': cid,
+            'keyboard': self._keyboard_layer,
+            'action': 'hide'
+        }
+        self._set_keyboard(param, callback)
+
+    def _add_handler(self, event: ServerEvents, handler: Callable) -> None:
+        self._socket_handler.register_handler(event, self.server_response_processing(handler, event))
+
+    def add_msg_handler(self, handler: Callable) -> None:
+        self._add_handler(ServerEvents.BOT_MESSAGE_EVENT, handler)
+
+    def add_command(self, command: str, handler: Callable) -> None:
+        if not self.__extract_command(command):
+            raise ValueError(f"Command '{command}' is not valid")
+
+        self._command_registry[command] = handler
+        self.logger.info(f"Command '{command}' was added")
+
+    def add_button(self, button_name: str, handler: Callable) -> None:
+        self._button_registry[button_name] = handler
+        self.logger.info(f"Button '{button_name}' was added")
 
     def run_polling(self):
-        self.socket_handler.wait()
+        self._socket_handler.wait()
 
-    @staticmethod
-    def server_outcome_unpacking_decorator(func: Callable) -> Callable:
+    def server_response_processing(self, func: Callable, event: ServerEvents) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            socket_handler = kwargs.pop('socket_handler') if "socket_handler" in kwargs else None
-            event = kwargs.pop('event') if "event" in kwargs else None
-            processed_incoming = EventOutcome(**args[0], **{"event": event}) if args and isinstance(args[0],
-                                                                                                    dict) else args
-            return func(processed_incoming, socket_handler)
+            try:
+                if not args or not isinstance(args[0], dict):
+                    raise ValueError(f"Server didn't get incoming data")
+
+                data = dict(args[0])  # copy
+                data["event"] = event
+                processed_incoming = EventOutcome(**data)
+
+                if event == ServerEvents.BOT_MESSAGE_EVENT:
+                    if isinstance(processed_incoming.data, DataContent):
+                        if processed_incoming.data.type == 'message-writing':
+                            # The process of processing message changes should be implemented from the
+                            # 'bot-message-change-event' events, but at the moment it is not implemented on the server side.
+                            return
+
+                        elif processed_incoming.data.type == 'text':
+                            command = self.__extract_command(processed_incoming.data.text)
+                            if command:
+                                return self._dispatch_command(command, processed_incoming)
+
+                elif event == ServerEvents.BOT_BUTTON_EVENT:
+                    return self._dispatch_button(processed_incoming)
+
+                return func(processed_incoming, self, **kwargs)
+
+            except Exception as e:
+                bot.logger.exception(f"Error in handler for event '{event}': {e}")
+                return None
 
         return wrapper
 
+    def __extract_command(self, message: str) -> str | None:
+        match = COMMAND_REGEX.match(message.strip())
+        return None if not match else match.group(0)
 
-class DataContent(BaseModel):
-    type: str
-    text: str | None = Field(default=None)
-    entities: list = Field(default_factory=list)
+    def _dispatch_command(self, command: str, event: EventOutcome) -> Any | None:
+        command_handler = self._command_registry.get(command, None)
+        if command_handler is not None and callable(command_handler):
+            return command_handler(event, self)
+        else:
+            self.logger.warning(f"Command '{command}' is not registered")
+
+    def _dispatch_button(self, server_incoming: EventOutcome) -> Any | None:
+        if server_incoming.callback_data:
+            button_handler = self._button_registry.get(server_incoming.callback_data, None)
+            if button_handler is not None and callable(button_handler):
+                return button_handler(server_incoming, self)
+            else:
+                self.logger.warning(f"Button '{server_incoming.callback_data}' is not registered")
+
+    @property
+    def _keyboard_layer(self) -> list:
+        keyboard_layer = []
+        for button_name in self._button_registry:
+            keyboard_layer.append({key: button_name for key in ('text', 'callbackData')})
+        return [keyboard_layer]
 
 
-class EventOutcome(BaseModel):
-    event: ServerEvents | None = Field(default=None)
-    id: int | None = Field(default=None)
-    cid: int
-    cid_type: str | None = Field(default=None, alias='cidType')
-    sender_id: int = Field(default=None, alias='senderId')
-    type: str | None = Field(default=None)
-    data: DataContent | None = Field(default=None)
-    data_type: str | None = Field(default=None, alias='dataType')
-    callback_data: str | None = Field(default=None, alias='callbackData')
-
-    @field_validator('data', mode='before')
-    @classmethod
-    def parse_data(cls, value):
-        if isinstance(value, str):
-            try:
-                parsed = json.loads(value)
-                return parsed
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON in 'data' field: {e}")
-        return value
-
+# TODO big problem after reconnect !
 
 if __name__ == "__main__":
     import logging.config
@@ -247,16 +271,41 @@ if __name__ == "__main__":
     bot = RosChatBot(debug_mode=True)
 
 
-    def incoming_handler(income: EventOutcome, socket_handler: SocketHandler):
-        print(f"EventOutcome({income})")
-        print(f"socket_handler({socket_handler=})")
-        socket_handler.send_message(income.cid, income.event)
-        # socket_handler
+    def incoming_handler(incoming: EventOutcome, bot: RosChatBot):
+        msg = f"Message '{incoming.data.text}' was received from cid {incoming.cid}"
+        bot.send_message(incoming.cid, msg)
+
+
+    def command_custom_handler(incoming: EventOutcome, bot: RosChatBot) -> None:
+        msg = f"Command '{incoming.data.text}' was executed"
+        bot.send_message(incoming.cid, msg)
+
+
+    def button_custom_handler(incoming: EventOutcome, bot: RosChatBot) -> None:
+        msg = f"Button '{incoming.callback_data}' was pushed"
+        bot.send_message(incoming.cid, msg)
 
 
     bot.connect()
-    bot.add_handler(ServerEvents.BOT_MESSAGE_EVENT, incoming_handler)
-    bot.add_handler(ServerEvents.BOT_BUTTON_EVENT, incoming_handler)
+    # TODO Should i make here sleep ?  Bad thing
+    sleep(3)
+    # bot.mark_message_watched(10450, lambda x: print(x))
+    # bot.mark_message_received(10450, lambda x: print(x))
+    bot.add_command('/test', command_custom_handler)
+    bot.add_button('test', button_custom_handler)
+    bot.turn_on_keyboard(143, lambda x: print(x))
+    bot.add_msg_handler(incoming_handler)
 
     bot.run_polling()
     print()
+
+#
+# 2025-06-07 01:13:26 - INFO - roschat.bot - [client.py:555] - Exiting read loop task
+# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:181] - Attempting polling connection to https://roschat.weghouse.ru/socket.io/?transport=polling&EIO=4
+# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:207] - Polling connection accepted with {'sid': '3_56YpJ_NrfI_V-bAANx', 'upgrades': ['websocket'], 'pingInterval': 5000, 'pingTimeout': 12000, 'maxPayload': 1000000}
+# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:501] - Engine.IO connection established
+# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:424] - Sending packet MESSAGE data 0{}
+# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:243] - Attempting WebSocket upgrade to wss://roschat.weghouse.ru/socket.io/?transport=websocket&EIO=4
+# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:370] - WebSocket upgrade was successful
+# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:404] - Received packet MESSAGE data 0{"sid":"yG-NFYmbmgfvBh2yAAN2"}
+# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:371] - Namespace / is connected
