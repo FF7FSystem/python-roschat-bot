@@ -213,7 +213,7 @@ class RosChatBot:
                 return func(processed_incoming, self, **kwargs)
 
             except Exception as e:
-                bot.logger.exception(f"Error in handler for event '{event}': {e}")
+                self.logger.exception(f"Error in handler for event '{event}': {e}")
                 return None
 
         return wrapper
@@ -294,7 +294,7 @@ if __name__ == "__main__":
 
 
     def handle_start_command(incoming: EventOutcome, bot: RosChatBot) -> None:
-        msg = f"Command '/start' was executed"
+        msg = f"Command '{incoming.data.text}' was executed"
         bot.turn_on_keyboard(incoming.cid, lambda x: print(x))
         bot.send_message(incoming.cid, msg)
 
@@ -302,9 +302,17 @@ if __name__ == "__main__":
     bot.connect()
     bot.add_command('/test', command_custom_handler)
     bot.add_command('/start', handle_start_command)
+    bot.add_command('/keyboard_refresh', handle_start_command)
     bot.add_button('test', button_custom_handler)
-    # bot.turn_on_keyboard(143, lambda x: print(x))
+    bot.add_button('test2', button_custom_handler)
+    bot.add_button('test3', button_custom_handler)
+    bot.add_button('test4', button_custom_handler)
+    bot.add_button('test5', button_custom_handler)
+    bot.add_button('test6', button_custom_handler)
+    bot.add_button('test7', button_custom_handler)
+    bot.add_button('test8', button_custom_handler)
+
     bot.add_msg_handler(incoming_handler)
 
     bot.run_polling()
-    print()
+    # print()
