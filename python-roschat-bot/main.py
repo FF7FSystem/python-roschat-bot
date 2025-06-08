@@ -1,9 +1,9 @@
 import json
 import logging
+import threading
 from collections.abc import Callable
 import functools
 from logging import Logger
-from time import sleep
 from typing import Any
 import re
 
@@ -11,6 +11,7 @@ from enums import ServerEvents
 from schemas import Settings, EventOutcome, DataContent
 import socketio
 import requests
+from exceptions import AuthorizationError
 
 DEFAULT_LOGGER = logging.getLogger('roschat.bot')
 COMMAND_REGEX = re.compile(r"^/\w+$")
@@ -19,19 +20,20 @@ COMMAND_REGEX = re.compile(r"^/\w+$")
 class SocketHandler(socketio.ClientNamespace):
 
     def __init__(self, credentials: dict, logger: Logger, debug_mode: bool = False) -> None:
-        super().__init__(namespace="*")
+        super().__init__(namespace="/")
         self.logger = logger
         self._credentials = credentials
         http_session = requests.Session()
         http_session.verify = False
-        self._sio = socketio.Client(http_session=http_session, logger=logger,
+        self._sio = socketio.Client(reconnection_attempts=5, http_session=http_session, logger=logger,
                                     engineio_logger=logger if debug_mode else debug_mode)
 
         self._sio.register_namespace(self)
-        # TODO Think about default callback function place which i can use if it was registered
+        self._auth_event = threading.Event()
 
-    def on_connect(self) -> None:
-        ...
+    def on_connect(self, *args, **kwargs) -> None:
+        self.logger.info(f"Connected to Server. Details: {args},{kwargs}")
+        self.authorization(self._credentials, callback=self._authorization_callback)
 
     def on_connect_error(self, *args, **kwargs) -> None:
         self.logger.warning(f"Connection error. Details: {args},{kwargs}", )
@@ -40,18 +42,22 @@ class SocketHandler(socketio.ClientNamespace):
         self.logger.warning(f"The connection was terminated. Details: {reason}")
         self._sio.disconnect()
 
-    def registrate_connection(self, callback: Callable = None) -> None:
-        self.logger.info("Connection registration")
-        self._sio.on(ServerEvents.CONNECT, handler=callback)
-
-    def connect_to_server(self, socket_url: str, socket_options: dict, callback: Callable = None) -> None:
+    def connect_to_server(self, socket_url: str, socket_options: dict) -> None:
         self.logger.info("Connecting to the server")
         self._sio.connect(socket_url, headers=socket_options)
-        self.authorization(self._credentials, callback)
 
     def authorization(self, credentials: dict, callback: Callable = None) -> None:
         self.logger.info("Authorization of the bot")
         self.dispatch_event(ServerEvents.START_BOT, data=credentials, callback=callback)
+
+    def _authorization_callback(self, response: dict) -> None:
+        self._auth_event.set()
+
+    def wait_for_authorization(self, timeout=5.0):
+        self._auth_event.clear()
+        if not self._auth_event.wait(timeout):
+            raise AuthorizationError("Server didn't confirm authorization in time")
+        self.logger.info("The authorization was successful")
 
     def dispatch_event(self, event: ServerEvents, data: dict, callback: Callable) -> None:
         self._sio.emit(event, data=data, callback=callback)
@@ -76,14 +82,12 @@ class RosChatBot:
         self._command_registry = dict()
         self._button_registry = dict()
 
-    def connect(self, callback: Callable = None) -> None:
-
+    def connect(self) -> None:
         try:
-            current_callback = callback if callback else self._socket_handler.default_callback
             socket_url = self.get_socket_url()
-            self._socket_handler.registrate_connection(current_callback)
-            self._socket_handler.connect_to_server(socket_url, self._settings.socket_options, current_callback)
+            self._socket_handler.connect_to_server(socket_url, self._settings.socket_options)
             self._register_default_handlers()
+            self._socket_handler.wait_for_authorization()
         except Exception as e:
             self.logger.exception(e)
             raise
@@ -236,8 +240,6 @@ class RosChatBot:
         return [keyboard_layer]
 
 
-# TODO big problem after reconnect !
-
 if __name__ == "__main__":
     import logging.config
     import urllib3
@@ -287,10 +289,6 @@ if __name__ == "__main__":
 
 
     bot.connect()
-    # TODO Should i make here sleep ?  Bad thing
-    sleep(3)
-    # bot.mark_message_watched(10450, lambda x: print(x))
-    # bot.mark_message_received(10450, lambda x: print(x))
     bot.add_command('/test', command_custom_handler)
     bot.add_button('test', button_custom_handler)
     bot.turn_on_keyboard(143, lambda x: print(x))
@@ -298,14 +296,3 @@ if __name__ == "__main__":
 
     bot.run_polling()
     print()
-
-#
-# 2025-06-07 01:13:26 - INFO - roschat.bot - [client.py:555] - Exiting read loop task
-# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:181] - Attempting polling connection to https://roschat.weghouse.ru/socket.io/?transport=polling&EIO=4
-# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:207] - Polling connection accepted with {'sid': '3_56YpJ_NrfI_V-bAANx', 'upgrades': ['websocket'], 'pingInterval': 5000, 'pingTimeout': 12000, 'maxPayload': 1000000}
-# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:501] - Engine.IO connection established
-# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:424] - Sending packet MESSAGE data 0{}
-# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:243] - Attempting WebSocket upgrade to wss://roschat.weghouse.ru/socket.io/?transport=websocket&EIO=4
-# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:370] - WebSocket upgrade was successful
-# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:404] - Received packet MESSAGE data 0{"sid":"yG-NFYmbmgfvBh2yAAN2"}
-# 2025-06-07 01:13:27 - INFO - roschat.bot - [client.py:371] - Namespace / is connected
