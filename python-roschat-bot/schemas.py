@@ -49,6 +49,6 @@ class EventOutcome(BaseModel):
                 parsed = json.loads(value)
                 return parsed
             except json.JSONDecodeError:
-                return {"text": value}
+                return {"text": value, "type": 'text'}
 
         return value

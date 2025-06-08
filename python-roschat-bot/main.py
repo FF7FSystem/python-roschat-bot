@@ -84,7 +84,7 @@ class RosChatBot:
                                              logger=self.logger,
                                              debug_socketio=debug_socketio,
                                              debug_engineio=debug_engineio)
-        self._command_registry = dict()
+        self.command_registry = dict()
         self._button_registry = dict()
 
     def connect(self) -> None:
@@ -174,7 +174,7 @@ class RosChatBot:
         if not self.__extract_command(command):
             raise ValueError(f"Command '{command}' is not valid")
 
-        self._command_registry[command] = handler
+        self.command_registry[command] = handler
         self.logger.info(f"Command '{command}' was added")
 
     def add_button(self, button_name: str, handler: Callable) -> None:
@@ -223,7 +223,7 @@ class RosChatBot:
         return None if not match else match.group(0)
 
     def _dispatch_command(self, command: str, event: EventOutcome) -> Any | None:
-        command_handler = self._command_registry.get(command, None)
+        command_handler = self.command_registry.get(command, None)
         if command_handler is not None and callable(command_handler):
             return command_handler(event, self)
         else:
@@ -238,11 +238,24 @@ class RosChatBot:
                 self.logger.warning(f"Button '{server_incoming.callback_data}' is not registered")
 
     @property
-    def _keyboard_layer(self) -> list:
+    def _keyboard_layer(self, cols: int = 3) -> list[list[dict]]:
+        if cols <= 0:
+            raise ValueError("cols must be a positive integer")
+
         keyboard_layer = []
-        for button_name in self._button_registry:
-            keyboard_layer.append({key: button_name for key in ('text', 'callbackData')})
-        return [keyboard_layer]
+        row = []
+
+        for i, button_name in enumerate(self._button_registry):
+            row.append({key: button_name for key in ('text', 'callbackData')})
+
+            if (i + 1) % cols == 0:
+                keyboard_layer.append(row)
+                row = []
+
+        if row:
+            keyboard_layer.append(row)
+
+        return keyboard_layer
 
 
 if __name__ == "__main__":
@@ -275,7 +288,7 @@ if __name__ == "__main__":
         },
     }
     logging.config.dictConfig(LOGGING_CONFIG)
-    bot = RosChatBot(debug_socketio=True)
+    bot = RosChatBot(debug_socketio=True, debug_engineio=True)
 
 
     def incoming_handler(incoming: EventOutcome, bot: RosChatBot):
@@ -294,15 +307,18 @@ if __name__ == "__main__":
 
 
     def handle_start_command(incoming: EventOutcome, bot: RosChatBot) -> None:
-        msg = f"Command '{incoming.data.text}' was executed"
         bot.turn_on_keyboard(incoming.cid, lambda x: print(x))
-        bot.send_message(incoming.cid, msg)
+        bot.send_message(incoming.cid, f"Registered commands: {"".join([f"\n {key}" for key in bot.command_registry])}")
+
+
+    def handle_keyboard_refresh_command(incoming: EventOutcome, bot: RosChatBot) -> None:
+        bot.turn_on_keyboard(incoming.cid, lambda x: print(x))
 
 
     bot.connect()
     bot.add_command('/test', command_custom_handler)
     bot.add_command('/start', handle_start_command)
-    bot.add_command('/keyboard_refresh', handle_start_command)
+    bot.add_command('/keyboard_refresh', handle_keyboard_refresh_command)
     bot.add_button('test', button_custom_handler)
     bot.add_button('test2', button_custom_handler)
     bot.add_button('test3', button_custom_handler)
