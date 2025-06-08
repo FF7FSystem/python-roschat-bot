@@ -19,14 +19,16 @@ COMMAND_REGEX = re.compile(r"^/\w+$")
 
 class SocketHandler(socketio.ClientNamespace):
 
-    def __init__(self, credentials: dict, logger: Logger, debug_mode: bool = False) -> None:
+    def __init__(self, credentials: dict, logger: Logger, debug_socketio: bool, debug_engineio: bool) -> None:
         super().__init__(namespace="/")
         self.logger = logger
         self._credentials = credentials
         http_session = requests.Session()
         http_session.verify = False
-        self._sio = socketio.Client(reconnection_attempts=5, http_session=http_session, logger=logger,
-                                    engineio_logger=logger if debug_mode else debug_mode)
+        self._sio = socketio.Client(reconnection_attempts=5,
+                                    http_session=http_session,
+                                    logger=logger if debug_socketio else debug_engineio,
+                                    engineio_logger=logger if debug_engineio else debug_engineio)
 
         self._sio.register_namespace(self)
         self._auth_event = threading.Event()
@@ -74,11 +76,14 @@ class SocketHandler(socketio.ClientNamespace):
 
 class RosChatBot:
 
-    def __init__(self, logger: Logger | None = None, debug_mode: bool = False) -> None:
+    def __init__(self, logger: Logger | None = None, debug_socketio: bool = False,
+                 debug_engineio: bool = False) -> None:
         self._settings = Settings()
         self.logger = logger if logger else DEFAULT_LOGGER
-        self._socket_handler = SocketHandler(credentials=self._settings.credentials, logger=self.logger,
-                                             debug_mode=debug_mode)
+        self._socket_handler = SocketHandler(credentials=self._settings.credentials,
+                                             logger=self.logger,
+                                             debug_socketio=debug_socketio,
+                                             debug_engineio=debug_engineio)
         self._command_registry = dict()
         self._button_registry = dict()
 
@@ -270,7 +275,7 @@ if __name__ == "__main__":
         },
     }
     logging.config.dictConfig(LOGGING_CONFIG)
-    bot = RosChatBot(debug_mode=True)
+    bot = RosChatBot(debug_socketio=True)
 
 
     def incoming_handler(incoming: EventOutcome, bot: RosChatBot):
@@ -288,10 +293,17 @@ if __name__ == "__main__":
         bot.send_message(incoming.cid, msg)
 
 
+    def handle_start_command(incoming: EventOutcome, bot: RosChatBot) -> None:
+        msg = f"Command '/start' was executed"
+        bot.turn_on_keyboard(incoming.cid, lambda x: print(x))
+        bot.send_message(incoming.cid, msg)
+
+
     bot.connect()
     bot.add_command('/test', command_custom_handler)
+    bot.add_command('/start', handle_start_command)
     bot.add_button('test', button_custom_handler)
-    bot.turn_on_keyboard(143, lambda x: print(x))
+    # bot.turn_on_keyboard(143, lambda x: print(x))
     bot.add_msg_handler(incoming_handler)
 
     bot.run_polling()

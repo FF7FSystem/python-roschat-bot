@@ -1,8 +1,10 @@
+from typing import Any
 
 from pydantic import Field, AnyHttpUrl, BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import json
 from enums import ServerEvents
+
 
 class Settings(BaseSettings):
     token: str = Field(min_length=64)
@@ -21,8 +23,9 @@ class Settings(BaseSettings):
     def credentials(self) -> dict:
         return {'token': self.token, 'name': self.bot_name}
 
+
 class DataContent(BaseModel):
-    type: str
+    type: str | None = Field(default=None)
     text: str | None = Field(default=None)
     entities: list = Field(default_factory=list)
 
@@ -40,11 +43,12 @@ class EventOutcome(BaseModel):
 
     @field_validator('data', mode='before')
     @classmethod
-    def parse_data(cls, value):
+    def parse_data(cls, value: Any) -> dict | Any:
         if isinstance(value, str):
             try:
                 parsed = json.loads(value)
                 return parsed
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON in 'data' field: {e}")
+            except json.JSONDecodeError:
+                return {"text": value}
+
         return value
