@@ -4,9 +4,11 @@ A Python library for creating bots for RosChat platform.
 """
 
 from .bot import RosChatBot
-from .schemas import Settings, EventOutcome, DataContent
 from .enums import ServerEvents
 from .exceptions import AuthorizationError
+from .schemas import DataContent
+from .schemas import EventOutcome
+from .schemas import Settings
 
 __all__ = [
     "RosChatBot",
@@ -14,5 +16,5 @@ __all__ = [
     "EventOutcome",
     "DataContent",
     "ServerEvents",
-    "AuthorizationError"
+    "AuthorizationError",
 ]
