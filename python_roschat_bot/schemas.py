@@ -16,9 +16,7 @@ class Settings(BaseSettings):
     token: str = Field(min_length=64, description="Bot authentication token")
     base_url: AnyHttpUrl = Field(..., description="RosChat server base URL")
     bot_name: str = Field(min_length=1, description="Bot display name")
-    query: Optional[str] = Field(
-        default="type-bot", description="Socket query parameter"
-    )
+    query: Optional[str] = Field(default="type-bot", description="Socket query parameter")
     reject_unauthorized: bool = Field(
         default=False,
         serialization_alias="rejectUnauthorized",

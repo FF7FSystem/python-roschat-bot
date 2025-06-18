@@ -56,7 +56,9 @@ class SocketHandler(socketio.ClientNamespace):
         self.logger.info("Authorization of the bot")
         self.dispatch_event(ServerEvents.START_BOT, data=credentials, callback=callback)
 
-    def _authorization_callback(self, response: dict) -> None:  # pylint: disable=unused-argument
+    def _authorization_callback(
+        self, response: dict
+    ) -> None:  # pylint: disable=unused-argument
         self._auth_event.set()
 
     def wait_for_authorization(self, timeout=5.0):
@@ -65,9 +67,7 @@ class SocketHandler(socketio.ClientNamespace):
             raise AuthorizationError("Server didn't confirm authorization in time")
         self.logger.info("The authorization was successful")
 
-    def dispatch_event(
-        self, event: ServerEvents, data: dict, callback: Callable
-    ) -> None:
+    def dispatch_event(self, event: ServerEvents, data: dict, callback: Callable) -> None:
         self._sio.emit(event, data=data, callback=callback)
 
     def register_handler(self, event: ServerEvents, handler: Callable) -> None:

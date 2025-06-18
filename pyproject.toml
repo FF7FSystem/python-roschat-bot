@@ -6,7 +6,7 @@ authors = [
     {name = "Vladislav Dorofeev", email = "vdorofeevdeveloper@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.8.1"
 license = {text = "MIT"}
 keywords = ["bot", "roschat", "socketio", "messaging"]
 classifiers = [
@@ -35,11 +35,11 @@ Documentation = "https://github.com/FF7FSystem/python-roschat-bot#readme"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=6.0",
-    "pytest-cov>=2.0",
-    "black>=21.0",
-    "flake8>=3.8",
-    "pylint>=2.0",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "pylint>=2.17",
 ]
 
 [build-system]
@@ -68,20 +68,45 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.8.1"
 requests = "^2.25.0"
 python-socketio = "^5.0.0"
 pydantic = "^2.0.0"
 pydantic-settings = "^2.0.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^6.0"
-pytest-cov = "^2.0"
-black = "^21.0"
-flake8 = "^3.8"
-pylint = "^2.0"
+pytest = "^7.0"
+pytest-cov = "^4.0"
+black = "^23.0"
+flake8 = "^6.0"
+pylint = "^2.17"
 
 [tool.poetry.urls]
 Homepage = "https://github.com/FF7FSystem/python-roschat-bot"
 Repository = "https://github.com/FF7FSystem/python-roschat-bot"
 Documentation = "https://github.com/FF7FSystem/python-roschat-bot#readme"
+
+[tool.black]
+line-length = 90
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.flake8]
+ignore = [
+    "E203",
+    "W503",
+    "E501"
+]

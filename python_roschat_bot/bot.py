@@ -90,9 +90,7 @@ class RosChatBot:
             ServerEvents.BOT_BUTTON_EVENT, self._socket_handler.default_callback
         )
 
-    def send_message(
-        self, cid: int, data: str | dict, callback: Callable = None
-    ) -> None:
+    def send_message(self, cid: int, data: str | dict, callback: Callable = None) -> None:
         # TODO think about validate incoming date by pydantic and create certain Model for each event (with custom dump function for dispatch->)
         params = {
             "cid": cid,
@@ -164,7 +162,6 @@ class RosChatBot:
         return wrapper
 
     def button(self, button_name: str | Iterable[str]) -> Callable[[F], F]:
-
         names = (button_name,) if isinstance(button_name, str) else button_name
 
         def wrapper(handler: F) -> F:
@@ -178,9 +175,7 @@ class RosChatBot:
     def start_polling(self) -> None:
         self._socket_handler.wait()
 
-    def server_response_processing(
-        self, func: Callable, event: ServerEvents
-    ) -> Callable:
+    def server_response_processing(self, func: Callable, event: ServerEvents) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             try:
@@ -199,13 +194,9 @@ class RosChatBot:
                             return None
 
                         if processed_incoming.data.type == "text":
-                            command = self.__extract_command(
-                                processed_incoming.data.text
-                            )
+                            command = self.__extract_command(processed_incoming.data.text)
                             if command:
-                                return self._dispatch_command(
-                                    command, processed_incoming
-                                )
+                                return self._dispatch_command(command, processed_incoming)
 
                 elif event == ServerEvents.BOT_BUTTON_EVENT:
                     return self._dispatch_button(processed_incoming)
@@ -244,7 +235,6 @@ class RosChatBot:
 
     @property
     def _keyboard_layer(self) -> list[list[dict]]:
-
         keyboard_layer = []
         row = []
 
