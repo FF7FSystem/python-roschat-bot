@@ -1,20 +1,32 @@
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import Field, AnyHttpUrl, BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import json
-from enums import ServerEvents
+from .enums import ServerEvents
 
 
 class Settings(BaseSettings):
-    token: str = Field(min_length=64)
-    base_url: AnyHttpUrl = Field(...)
-    bot_name: str = Field(min_length=1)
-    query: None | str = Field(default='type-bot')
-    reject_unauthorized: bool = Field(default=False, serialization_alias="rejectUnauthorized")
-    keyboard_cols: int = Field(default=3, gt=0, description="Number of columns in keyboard layout")
+    token: str = Field(min_length=64, description="Bot authentication token")
+    base_url: AnyHttpUrl = Field(..., description="RosChat server base URL")
+    bot_name: str = Field(min_length=1, description="Bot display name")
+    query: Optional[str] = Field(default='type-bot', description="Socket query parameter")
+    reject_unauthorized: bool = Field(
+        default=False, 
+        serialization_alias="rejectUnauthorized",
+        description="Whether to reject unauthorized connections"
+    )
+    keyboard_cols: int = Field(
+        default=3, 
+        gt=0, 
+        description="Number of columns in keyboard layout"
+    )
 
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
+    model_config = SettingsConfigDict(
+        env_file='../ examples/.env',
+        env_file_encoding='utf-8',
+        case_sensitive=False
+    )
 
     @property
     def socket_options(self) -> dict:

@@ -1,7 +1,6 @@
 import logging.config
 import urllib3
-from bot import RosChatBot
-from schemas import EventOutcome
+from python_roschat_bot import RosChatBot, EventOutcome
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

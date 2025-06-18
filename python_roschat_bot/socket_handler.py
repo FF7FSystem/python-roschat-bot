@@ -1,29 +1,38 @@
 import threading
 from collections.abc import Callable
 from logging import Logger
+from typing import Optional
 
-from enums import ServerEvents
+from .enums import ServerEvents
+from .exceptions import AuthorizationError, ConnectionError
 import socketio
 import requests
-from exceptions import AuthorizationError
-
-
 
 class SocketHandler(socketio.ClientNamespace):
-
-    def __init__(self, credentials: dict, logger: Logger, debug_socketio: bool, debug_engineio: bool) -> None:
+    """Handles WebSocket connections to RosChat server."""
+    
+    def __init__(
+        self, 
+        credentials: dict, 
+        logger: Logger, 
+        debug_socketio: bool = False, 
+        debug_engineio: bool = False
+    ) -> None:
         super().__init__(namespace="/")
         self.logger = logger
         self._credentials = credentials
+        self._auth_event = threading.Event()
+        
         http_session = requests.Session()
         http_session.verify = False
-        self._sio = socketio.Client(reconnection_attempts=5,
-                                    http_session=http_session,
-                                    logger=logger if debug_socketio else debug_engineio,
-                                    engineio_logger=logger if debug_engineio else debug_engineio)
-
+        
+        self._sio = socketio.Client(
+            reconnection_attempts=5,
+            http_session=http_session,
+            logger=logger if debug_socketio else debug_socketio,
+            engineio_logger=logger if debug_engineio else debug_engineio
+        )
         self._sio.register_namespace(self)
-        self._auth_event = threading.Event()
 
     def on_connect(self, *args, **kwargs) -> None:
         self.logger.info(f"Connected to Server. Details: {args},{kwargs}")

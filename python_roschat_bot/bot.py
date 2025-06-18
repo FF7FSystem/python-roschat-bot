@@ -1,33 +1,44 @@
 import json
 import logging
+import re
 from collections.abc import Callable
 import functools
-from logging import Logger
-from typing import Any, TypeVar, Iterable
-import re
+from typing import Any, TypeVar, Iterable, Optional
 
-from enums import ServerEvents
-from schemas import Settings, EventOutcome, DataContent
+from .enums import ServerEvents
+from .schemas import Settings, EventOutcome, DataContent
+from .exceptions import ConnectionError, InvalidDataError
+from .socket_handler import SocketHandler
 import requests
-from socket_handler import SocketHandler
 
 DEFAULT_LOGGER = logging.getLogger('roschat.bot')
 COMMAND_REGEX = re.compile(r"^/\w+$")
 F = TypeVar('F', bound=Callable)
 
-
 class RosChatBot:
-
-    def __init__(self, logger: Logger | None = None, debug_socketio: bool = False,
-                 debug_engineio: bool = False) -> None:
+    """
+    Main bot class for RosChat platform.
+    
+    This class provides functionality for creating and managing
+    bots that can interact with RosChat server.
+    """
+    
+    def __init__(
+        self, 
+        logger: Optional[logging.Logger] = None, 
+        debug_socketio: bool = False,
+        debug_engineio: bool = False
+    ) -> None:
         self._settings = Settings()
-        self.logger = logger if logger else DEFAULT_LOGGER
-        self._socket_handler = SocketHandler(credentials=self._settings.credentials,
-                                             logger=self.logger,
-                                             debug_socketio=debug_socketio,
-                                             debug_engineio=debug_engineio)
-        self.command_registry = dict()
-        self._button_registry = dict()
+        self.logger = logger or DEFAULT_LOGGER
+        self._socket_handler = SocketHandler(
+            credentials=self._settings.credentials,
+            logger=self.logger,
+            debug_socketio=debug_socketio,
+            debug_engineio=debug_engineio
+        )
+        self.command_registry: dict[str, Callable] = {}
+        self._button_registry: dict[str, Callable] = {}
 
     def connect(self) -> None:
         try:
@@ -37,7 +48,7 @@ class RosChatBot:
             self._socket_handler.wait_for_authorization()
         except Exception as e:
             self.logger.exception(e)
-            raise
+            raise ConnectionError(e)
 
     @property
     def _webserver_config(self) -> dict:
@@ -53,7 +64,7 @@ class RosChatBot:
         self.logger.info("Get Roschat server port")
         web_sockets_port = self._webserver_config.get('webSocketsPortVer4', None)
         if web_sockets_port is None:
-            raise ValueError("Couldn't get the value of the web socket from the web server configuration")
+            raise ConnectionError("Couldn't get the value of the web socket from the web server configuration")
         return f"{self._settings.base_url}:{web_sockets_port}"
 
     def _register_default_handlers(self) -> None:
@@ -81,11 +92,11 @@ class RosChatBot:
 
     def _set_keyboard(self, params: dict, callback: Callable = None) -> None:
         if not params.get('cid'):
-            raise ValueError("Required the cid field is not provided")
+            raise InvalidDataError("Required the cid field is not provided")
         if not params.get('action'):
-            raise ValueError("Required the action field is not provided")
+            raise InvalidDataError("Required the action field is not provided")
         if not params.get('keyboard'):
-            raise ValueError("Required the keyboard field is not provided")
+            raise InvalidDataError("Required the keyboard field is not provided")
 
         self._socket_handler.dispatch_event(ServerEvents.SET_BOT_KEYBOARD, data=params, callback=callback)
 
@@ -119,7 +130,7 @@ class RosChatBot:
 
     def command(self, command: str) -> Callable[[F], F]:
         if not self.__extract_command(command):
-            raise ValueError(f"Command '{command}' is not valid")
+            raise InvalidDataError(f"Command '{command}' is not valid")
 
         def wrapper(handler: F) -> F:
             self.command_registry[command] = handler
@@ -148,7 +159,7 @@ class RosChatBot:
         def wrapper(*args, **kwargs):
             try:
                 if not args or not isinstance(args[0], dict):
-                    raise ValueError(f"Server didn't get incoming data")
+                    raise InvalidDataError(f"Server didn't get incoming data")
 
                 data = dict(args[0])  # copy
                 data["event"] = event
