@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     bot_name: str = Field(min_length=1)
     query: None | str = Field(default='type-bot')
     reject_unauthorized: bool = Field(default=False, serialization_alias="rejectUnauthorized")
+    keyboard_cols: int = Field(default=3, gt=0, description="Number of columns in keyboard layout")
 
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
 
