@@ -6,7 +6,7 @@ class AuthorizationError(RosChatBotError):
     """Raised when bot fails to authorize with the server."""
 
 
-class ConnectionError(RosChatBotError):
+class BotConnectionError(RosChatBotError):
     """Raised when connection to server fails."""
 
 

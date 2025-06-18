@@ -303,7 +303,7 @@ The library provides a comprehensive exception hierarchy:
 from python_roschat_bot import (
     RosChatBotError,
     AuthorizationError,
-    ConnectionError,
+    BotConnectionError,
     InvalidDataError,
     WebSocketPortError
 )
@@ -312,7 +312,7 @@ try:
     bot.connect()
 except AuthorizationError as e:
     print(f"Authorization failed: {e}")
-except ConnectionError as e:
+except BotConnectionError as e:
     print(f"Connection failed: {e}")
 except WebSocketPortError as e:
     print(f"WebSocket port error: {e}")

@@ -11,7 +11,7 @@ from typing import TypeVar
 import requests
 
 from .enums import ServerEvents
-from .exceptions import ConnectionError
+from .exceptions import BotConnectionError
 from .exceptions import InvalidDataError
 from .schemas import DataContent
 from .schemas import EventOutcome
@@ -58,25 +58,25 @@ class RosChatBot:
             self._socket_handler.wait_for_authorization()
         except Exception as e:
             self.logger.exception(e)
-            raise ConnectionError(e)
+            raise BotConnectionError(e) from e
 
     @property
     def _webserver_config(self) -> dict:
         try:
             response = requests.get(
-                f"{self._settings.base_url}/ajax/config.json", verify=False
+                f"{self._settings.base_url}/ajax/config.json", verify=False, timeout=5
             )
         except requests.exceptions.RequestException as e:
             self.logger.exception(e)
             raise
-        else:
-            return response.json()
+
+        return response.json()
 
     def _get_socket_url(self) -> str:
         self.logger.info("Get Roschat server port")
         web_sockets_port = self._webserver_config.get("webSocketsPortVer4", None)
         if web_sockets_port is None:
-            raise ConnectionError(
+            raise BotConnectionError(
                 "Couldn't get the value of the web socket from the web server configuration"
             )
         return f"{self._settings.base_url}:{web_sockets_port}"
@@ -185,7 +185,7 @@ class RosChatBot:
         def wrapper(*args, **kwargs):
             try:
                 if not args or not isinstance(args[0], dict):
-                    raise InvalidDataError(f"Server didn't get incoming data")
+                    raise InvalidDataError("Server didn't get incoming data")
 
                 data = dict(args[0])  # copy
                 data["event"] = event
@@ -196,9 +196,9 @@ class RosChatBot:
                         if processed_incoming.data.type == "message-writing":
                             # The process of processing message changes should be implemented from the
                             # 'bot-message-change-event' events, but at the moment it is not implemented on the server side.
-                            return
+                            return None
 
-                        elif processed_incoming.data.type == "text":
+                        if processed_incoming.data.type == "text":
                             command = self.__extract_command(
                                 processed_incoming.data.text
                             )
@@ -212,7 +212,7 @@ class RosChatBot:
 
                 return func(processed_incoming, self, **kwargs)
 
-            except Exception as e:
+            except (InvalidDataError, ValueError, KeyError, TypeError) as e:
                 self.logger.exception(f"Error in handler for event '{event}': {e}")
                 return None
 
@@ -226,20 +226,21 @@ class RosChatBot:
         command_handler = self.command_registry.get(command, None)
         if command_handler is not None and callable(command_handler):
             return command_handler(event, self)
-        else:
-            self.logger.warning(f"Command '{command}' is not registered")
+        self.logger.warning(f"Command '{command}' is not registered")
+        return None
 
     def _dispatch_button(self, server_incoming: EventOutcome) -> Any | None:
         if server_incoming.callback_data:
             button_handler = self._button_registry.get(
-                server_incoming.callback_data, None
+                server_incoming.callback_data,
+                None,
             )
             if button_handler is not None and callable(button_handler):
                 return button_handler(server_incoming, self)
-            else:
-                self.logger.warning(
-                    f"Button '{server_incoming.callback_data}' is not registered"
-                )
+            self.logger.warning(
+                f"Button '{server_incoming.callback_data}' is not registered"
+            )
+        return None
 
     @property
     def _keyboard_layer(self) -> list[list[dict]]:

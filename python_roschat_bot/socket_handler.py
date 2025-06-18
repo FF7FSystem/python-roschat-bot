@@ -3,7 +3,7 @@ from collections.abc import Callable
 from logging import Logger
 
 import requests
-import socketio
+import socketio  # pylint: disable=import-error
 
 from .enums import ServerEvents
 from .exceptions import AuthorizationError
@@ -56,7 +56,7 @@ class SocketHandler(socketio.ClientNamespace):
         self.logger.info("Authorization of the bot")
         self.dispatch_event(ServerEvents.START_BOT, data=credentials, callback=callback)
 
-    def _authorization_callback(self, response: dict) -> None:
+    def _authorization_callback(self, response: dict) -> None:  # pylint: disable=unused-argument
         self._auth_event.set()
 
     def wait_for_authorization(self, timeout=5.0):
