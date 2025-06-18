@@ -3,9 +3,6 @@ from setuptools import setup, find_packages
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-with open("requirements.txt", "r", encoding="utf-8") as fh:
-    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
-
 setup(
     name="python-roschat-bot",
     version="0.1.0",
@@ -26,9 +23,15 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     python_requires=">=3.8",
-    install_requires=requirements,
+    install_requires=[
+        "requests>=2.25.0,<3.0.0",
+        "python-socketio>=5.0.0,<6.0.0",
+        "pydantic>=2.0.0,<3.0.0",
+        "pydantic-settings>=2.0.0,<3.0.0",
+    ],
     extras_require={
         "dev": [
             "pytest>=6.0",
@@ -36,6 +39,7 @@ setup(
             "black>=21.0",
             "flake8>=3.8",
             "mypy>=0.800",
+            "pylint>=2.0",
         ],
     },
 )
