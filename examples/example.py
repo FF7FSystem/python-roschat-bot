@@ -33,27 +33,31 @@ bot = RosChatBot(debug_socketio=True, debug_engineio=True)
 bot.connect()
 
 
-@bot.command('/test')
+@bot.command("/test")
 def command_custom_handler(incoming: EventOutcome, bot: RosChatBot) -> None:
     msg = f"Command '{incoming.data.text}' was executed"
     bot.send_message(incoming.cid, msg)
 
 
-@bot.button(["test", "test1", "test2", "test3", "test4", "test5", "test6", "test7", "test8"])
+@bot.button(
+    ["test", "test1", "test2", "test3", "test4", "test5", "test6", "test7", "test8"]
+)
 def button_custom_handler(incoming: EventOutcome, bot: RosChatBot) -> None:
     msg = f"Button '{incoming.callback_data}' was pushed"
     bot.send_message(incoming.cid, msg)
 
 
-@bot.command('/start')
+@bot.command("/start")
 def handle_start_command(incoming: EventOutcome, bot: RosChatBot) -> None:
     bot.turn_on_keyboard(incoming.cid, lambda x: print(x))
-    bot.send_message(incoming.cid, f"Registered commands: {"".join([f"\n {key}" for key in bot.command_registry])}")
+    commands = "".join([f"\n {key}" for key in bot.command_registry])
+    bot.send_message(incoming.cid, f"Registered commands: {commands}")
 
 
-@bot.command('/keyboard_refresh')
+@bot.command("/keyboard_refresh")
 def handle_keyboard_refresh_command(incoming: EventOutcome, bot: RosChatBot) -> None:
     bot.turn_on_keyboard(incoming.cid, lambda x: print(x))
+
 
 # TODO that it will be not important the order of registration handlers and connection to server
 @bot.message()

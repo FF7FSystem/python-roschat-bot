@@ -256,8 +256,8 @@ class RosChatBot:
         return keyboard_layer
 
     @staticmethod
-    def _resolve_env_file(env_file_path)->str:
-        #If explicitly provided as an absolute path
+    def _resolve_env_file(env_file_path) -> str:
+        # If explicitly provided as an absolute path
         if env_file_path:
             env_path = Path(env_file_path)
             if not env_path.is_absolute():
@@ -266,7 +266,7 @@ class RosChatBot:
                 return str(env_path)
             raise FileNotFoundError(f"Specified env_file_path not found: {env_path}")
 
-        #If environment variable is set (must be absolute)
+        # If environment variable is set (must be absolute)
         env_from_env = os.environ.get("ROSCHAT_ENV_FILE_PATH")
         if env_from_env:
             env_path = Path(env_from_env)
@@ -274,9 +274,11 @@ class RosChatBot:
                 raise ValueError("ROSCHAT_ENV_FILE_PATH must be an absolute path")
             if env_path.is_file():
                 return str(env_path)
-            raise FileNotFoundError(f"ROSCHAT_ENV_FILE_PATH points to a non-existent file: {env_path}")
+            raise FileNotFoundError(
+                f"ROSCHAT_ENV_FILE_PATH points to a non-existent file: {env_path}"
+            )
 
-        #Look for .env next to the running script
+        # Look for .env next to the running script
         script_dir = Path(sys.argv[0]).parent
         local_env = (script_dir / ".env").resolve()
         if local_env.is_file():
