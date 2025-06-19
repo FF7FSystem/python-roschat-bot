@@ -11,17 +11,24 @@ class TestRosChatBot:
     def setup_method(self):
         """Set up test fixtures."""
         # Mock Settings to avoid validation errors in tests
-        with patch('python_roschat_bot.bot.Settings') as mock_settings:
-            mock_settings_instance = Mock()
-            mock_settings_instance.token = "test_token_64_characters_long_for_testing_purposes_only"
-            mock_settings_instance.base_url = "https://test.example.com"
-            mock_settings_instance.bot_name = "TestBot"
-            mock_settings_instance.credentials = {"token": "test_token", "name": "TestBot"}
-            mock_settings_instance.socket_options = {"query": "type-bot", "rejectUnauthorized": "false"}
-            mock_settings_instance.keyboard_cols = 3
-            mock_settings.return_value = mock_settings_instance
+        patcher_settings = patch('python_roschat_bot.bot.Settings')
+        patcher_env = patch('python_roschat_bot.bot.RosChatBot._resolve_env_file', return_value='tests/.env')
+        self.addCleanup = getattr(self, 'addCleanup', lambda f: None)  # for pytest compatibility
+        self.mock_settings = patcher_settings.start()
+        self.mock_env = patcher_env.start()
+        self.addCleanup(patcher_settings.stop)
+        self.addCleanup(patcher_env.stop)
 
-            self.bot = RosChatBot()
+        mock_settings_instance = Mock()
+        mock_settings_instance.token = "test_token_64_characters_long_for_testing_purposes_only"
+        mock_settings_instance.base_url = "https://test.example.com"
+        mock_settings_instance.bot_name = "TestBot"
+        mock_settings_instance.credentials = {"token": "test_token", "name": "TestBot"}
+        mock_settings_instance.socket_options = {"query": "type-bot", "rejectUnauthorized": "false"}
+        mock_settings_instance.keyboard_cols = 3
+        self.mock_settings.return_value = mock_settings_instance
+
+        self.bot = RosChatBot()
 
     def test_bot_initialization(self):
         """Test bot initialization."""

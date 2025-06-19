@@ -1,3 +1,6 @@
+import os
+import sys
+from pathlib import Path
 import functools
 import json
 import logging
@@ -36,8 +39,10 @@ class RosChatBot:
         logger: Optional[logging.Logger] = None,
         debug_socketio: bool = False,
         debug_engineio: bool = False,
+        env_file_path: str = None,
     ) -> None:
-        self._settings = Settings()
+        self.env_file = self._resolve_env_file(env_file_path)
+        self._settings = Settings(_env_file=self.env_file)
         self.logger = logger or DEFAULT_LOGGER
         self._socket_handler = SocketHandler(
             credentials=self._settings.credentials,
@@ -249,3 +254,37 @@ class RosChatBot:
             keyboard_layer.append(row)
 
         return keyboard_layer
+
+    @staticmethod
+    def _resolve_env_file(env_file_path)->str:
+        #If explicitly provided as an absolute path
+        if env_file_path:
+            env_path = Path(env_file_path)
+            if not env_path.is_absolute():
+                raise ValueError("env_file_path must be an absolute path")
+            if env_path.is_file():
+                return str(env_path)
+            raise FileNotFoundError(f"Specified env_file_path not found: {env_path}")
+
+        #If environment variable is set (must be absolute)
+        env_from_env = os.environ.get("ROSCHAT_ENV_FILE_PATH")
+        if env_from_env:
+            env_path = Path(env_from_env)
+            if not env_path.is_absolute():
+                raise ValueError("ROSCHAT_ENV_FILE_PATH must be an absolute path")
+            if env_path.is_file():
+                return str(env_path)
+            raise FileNotFoundError(f"ROSCHAT_ENV_FILE_PATH points to a non-existent file: {env_path}")
+
+        #Look for .env next to the running script
+        script_dir = Path(sys.argv[0]).parent
+        local_env = (script_dir / ".env").resolve()
+        if local_env.is_file():
+            return str(local_env)
+
+        raise FileNotFoundError(
+            "Could not find .env file. "
+            "Please provide the absolute path via the env_file_path parameter, "
+            "set the ROSCHAT_ENV_FILE_PATH environment variable, "
+            "or place a .env file next to the script being run."
+        )

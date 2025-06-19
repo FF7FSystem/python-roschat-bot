@@ -46,7 +46,6 @@ class SocketHandler(socketio.ClientNamespace):
 
     def on_disconnect(self, reason) -> None:
         self.logger.warning(f"The connection was terminated. Details: {reason}")
-        self._sio.disconnect()
 
     def connect_to_server(self, socket_url: str, socket_options: dict) -> None:
         self.logger.info("Connecting to the server")

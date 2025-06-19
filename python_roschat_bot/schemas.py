@@ -26,9 +26,7 @@ class Settings(BaseSettings):
         default=3, gt=0, description="Number of columns in keyboard layout"
     )
 
-    model_config = SettingsConfigDict(
-        env_file="../ examples/.env", env_file_encoding="utf-8", case_sensitive=False
-    )
+    model_config = SettingsConfigDict(env_file=None)
 
     @property
     def socket_options(self) -> dict:

@@ -360,3 +360,34 @@ If you encounter any issues or have questions:
 - Custom keyboard support
 - WebSocket communication
 - Pydantic validation 
+
+## Providing the .env file for the library
+
+The RosChatBot library requires a `.env` file with configuration variables. You can provide this file in one of the following ways:
+
+1. **Pass an absolute path via the constructor:**
+   
+   ```python
+   bot = RosChatBot(env_file_path="/absolute/path/to/.env")
+   ```
+   The path must be absolute. Relative paths are not supported.
+
+2. **Set the environment variable `ROSCHAT_ENV_FILE_PATH`:**
+   
+   On Linux/macOS:
+   ```bash
+   export ROSCHAT_ENV_FILE_PATH=/absolute/path/to/.env
+   ```
+   On Windows:
+   ```cmd
+   set ROSCHAT_ENV_FILE_PATH=C:\absolute\path\to\.env
+   ```
+   The value must be an absolute path.
+
+3. **Place a `.env` file next to the script being run:**
+   
+   If neither of the above is provided, the library will look for a `.env` file in the same directory as the script you are running.
+
+If the `.env` file is not found using any of these methods, the library will raise a `FileNotFoundError` with a descriptive message.
+
+**Note:** Relative paths are not supported for the `.env` file. Always use absolute paths when specifying the file location explicitly. 
